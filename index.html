@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Project Board</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300;1,9..144,400;1,9..144,500&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 :root {
   --ink:        #1C1C1A;
@@ -50,6 +51,8 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 .btn-new-proj:hover{background:var(--teal);transform:translateY(-1px);}
 .btn-new{font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;background:var(--ink);color:var(--warm-white);border:none;padding:7px 14px;border-radius:40px;cursor:pointer;transition:background 0.2s,transform 0.15s;white-space:nowrap;}
 .btn-new:hover{background:var(--teal);transform:translateY(-1px);}
+.btn-export{font-family:'Plus Jakarta Sans',sans-serif;font-size:11px;font-weight:500;background:var(--sage-pale);color:var(--sage);border:1px solid #C8DCC5;padding:7px 14px;border-radius:40px;cursor:pointer;transition:all 0.2s;white-space:nowrap;}
+.btn-export:hover{background:var(--sage);color:white;border-color:var(--sage);transform:translateY(-1px);}
 
 /* STATS */
 .stats-bar{background:var(--linen);border-bottom:1px solid var(--cream);padding:10px 28px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
@@ -276,6 +279,7 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
   </div>
   <div class="topbar-right">
     <button class="btn-ai" onclick="toggleAI()">✦ AI</button>
+    <button class="btn-export" onclick="exportExcel()">↓ Export</button>
     <button class="btn-new-proj" onclick="openProjModal()">+ Project</button>
     <button class="btn-new" onclick="openTaskModal()">+ Task</button>
   </div>
@@ -849,6 +853,88 @@ async function runAI(){
   btn.textContent='Ask';btn.disabled=false;
 }
 document.getElementById('ai-input').addEventListener('keydown',e=>{if(e.key==='Enter')runAI();});
+
+// ── EXPORT TO EXCEL ───────────────────────────────────────────────────────
+function exportExcel(){
+  const wb = XLSX.utils.book_new();
+  const COL_LBL_MAP={todo:'To Do',inprogress:'In Progress',done:'Done',blocked:'Blocked'};
+  const PRI_MAP={high:'High',med:'Medium',low:'Low'};
+  const HOR_MAP={'6w':'6 Weeks','3m':'3 Months','6m':'6 Months','9m':'9 Months','12m':'12 Months'};
+
+  // ── SHEET 1: All Tasks ──────────────────────────────────────────────────
+  const allRows=[['Project','Task','Description','Status','Priority','Due Date','Label','Strategic Horizon']];
+  projects.forEach(p=>{
+    const pt=tasks.filter(t=>t.projectId===p.id);
+    pt.forEach(t=>{
+      allRows.push([
+        p.name,
+        t.title,
+        t.desc||'',
+        COL_LBL_MAP[t.status]||t.status,
+        PRI_MAP[t.priority]||t.priority,
+        t.due||'',
+        t.label||'',
+        HOR_MAP[t.horizon]||''
+      ]);
+    });
+    if(pt.length) allRows.push(['','','','','','','','']); // spacer between projects
+  });
+  const wsAll=XLSX.utils.aoa_to_sheet(allRows);
+  wsAll['!cols']=[{wch:28},{wch:36},{wch:40},{wch:14},{wch:10},{wch:12},{wch:14},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, wsAll, 'All Tasks');
+
+  // ── SHEET 2: Project Summary ────────────────────────────────────────────
+  const sumRows=[['Project','Color','Total Tasks','Done','In Progress','Blocked','To Do','% Complete','Description']];
+  projects.forEach(p=>{
+    const pt=tasks.filter(t=>t.projectId===p.id);
+    const done=pt.filter(t=>t.status==='done').length;
+    const pct=pt.length?Math.round(done/pt.length*100):0;
+    sumRows.push([
+      p.name, p.color, pt.length, done,
+      pt.filter(t=>t.status==='inprogress').length,
+      pt.filter(t=>t.status==='blocked').length,
+      pt.filter(t=>t.status==='todo').length,
+      pct+'%',
+      p.desc||''
+    ]);
+  });
+  const wsSum=XLSX.utils.aoa_to_sheet(sumRows);
+  wsSum['!cols']=[{wch:28},{wch:10},{wch:12},{wch:8},{wch:12},{wch:10},{wch:8},{wch:12},{wch:44}];
+  XLSX.utils.book_append_sheet(wb, wsSum, 'Project Summary');
+
+  // ── SHEET 3: Strategic Horizons ─────────────────────────────────────────
+  const hRows=[['Horizon','Project','Task','Status','Priority','Due Date','Label']];
+  ['6w','3m','6m','9m','12m'].forEach(hid=>{
+    const ht=tasks.filter(t=>t.horizon===hid);
+    if(ht.length){
+      ht.forEach(t=>{
+        const p=pById(t.projectId);
+        hRows.push([HOR_MAP[hid],p?.name||'',t.title,COL_LBL_MAP[t.status]||t.status,PRI_MAP[t.priority]||t.priority,t.due||'',t.label||'']);
+      });
+      hRows.push(['','','','','','','']); // spacer
+    }
+  });
+  const wsH=XLSX.utils.aoa_to_sheet(hRows);
+  wsH['!cols']=[{wch:14},{wch:28},{wch:36},{wch:14},{wch:10},{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, wsH, 'Strategic Horizons');
+
+  // ── Per-project sheets ───────────────────────────────────────────────────
+  projects.forEach(p=>{
+    const pt=tasks.filter(t=>t.projectId===p.id);
+    if(!pt.length) return;
+    const rows=[['Task','Description','Status','Priority','Due Date','Label','Strategic Horizon']];
+    pt.forEach(t=>rows.push([t.title,t.desc||'',COL_LBL_MAP[t.status]||t.status,PRI_MAP[t.priority]||t.priority,t.due||'',t.label||'',HOR_MAP[t.horizon]||'']));
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols']=[{wch:36},{wch:40},{wch:14},{wch:10},{wch:12},{wch:14},{wch:16}];
+    // Sanitize sheet name (Excel max 31 chars, no special chars)
+    const sheetName=p.name.replace(/[\\\/\?\*\[\]]/g,'').slice(0,31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  // ── Download ─────────────────────────────────────────────────────────────
+  const today=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `project-board-${today}.xlsx`);
+}
 
 // ── RENDER ALL + INIT ─────────────────────────────────────────────────────
 function renderAll(){
