@@ -38,8 +38,15 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 
 /* TOPBAR */
 .topbar{background:rgba(250,247,243,0.97);backdrop-filter:blur(16px);border-bottom:1px solid var(--cream);padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
-.topbar-brand{font-family:'Fraunces',serif;font-size:19px;font-weight:400;color:var(--ink);letter-spacing:-0.3px;white-space:nowrap;}
+.topbar-brand{font-family:'Fraunces',serif;font-size:19px;font-weight:400;color:var(--ink);letter-spacing:-0.3px;white-space:nowrap;display:flex;align-items:center;gap:6px;cursor:pointer;}
 .topbar-brand em{font-style:italic;color:var(--teal);}
+#board-name-display{font-family:'Fraunces',serif;font-size:19px;font-weight:400;color:var(--ink);letter-spacing:-0.3px;}
+#board-name-display em{font-style:italic;color:var(--teal);}
+.board-name-input{display:none;font-family:'Fraunces',serif;font-size:19px;font-weight:400;color:var(--ink);letter-spacing:-0.3px;border:none;border-bottom:2px solid var(--teal-light);background:transparent;outline:none;width:220px;padding:0;}
+.board-name-input:focus{border-bottom-color:var(--teal);}
+.board-name-edit-hint{font-size:12px;color:var(--sand);opacity:0;transition:opacity .2s;cursor:pointer;margin-top:2px;}
+#board-name-wrap:hover .board-name-edit-hint{opacity:1;}
+#board-name-wrap.editing .board-name-edit-hint{opacity:0;}
 .topbar-center{display:flex;align-items:center;gap:2px;background:var(--linen);border:1px solid var(--cream);border-radius:40px;padding:3px;}
 .view-btn{font-family:'Plus Jakarta Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:0.4px;text-transform:uppercase;padding:5px 12px;border-radius:40px;border:none;background:transparent;color:var(--stone);cursor:pointer;transition:all 0.2s;white-space:nowrap;}
 .view-btn.active{background:white;color:var(--teal);box-shadow:0 1px 8px rgba(26,120,112,0.12);}
@@ -269,7 +276,12 @@ body::before{content:'';position:fixed;inset:0;background-image:url("data:image/
 
 <!-- TOPBAR -->
 <div class="topbar">
-  <div class="topbar-brand">project <em>board</em></div>
+  <div class="topbar-brand" id="board-name-wrap">
+    <span id="board-name-display" onclick="startEditName()" title="Click to rename your board"></span>
+    <input id="board-name-input" class="board-name-input" type="text" maxlength="40"
+      onblur="saveName()" onkeydown="if(event.key==='Enter')saveName();if(event.key==='Escape')cancelEditName();" />
+    <span class="board-name-edit-hint" onclick="startEditName()">✎</span>
+  </div>
   <div class="topbar-center">
     <button class="view-btn" id="vbtn-kanban" onclick="switchView('kanban')">Kanban</button>
     <button class="view-btn" id="vbtn-list" onclick="switchView('list')">List</button>
@@ -936,6 +948,54 @@ function exportExcel(){
   XLSX.writeFile(wb, `project-board-${today}.xlsx`);
 }
 
+// ── BOARD NAME ────────────────────────────────────────────────────────────
+let boardName = localStorage.getItem('pb4_boardname') || '';
+
+function renderBoardName(){
+  const display = document.getElementById('board-name-display');
+  const name = boardName.trim();
+  if(name){
+    display.innerHTML = name.replace(/\s+(\S+)$/, ' <em>$1</em>');
+  } else {
+    display.innerHTML = 'project <em>board</em>';
+  }
+  document.title = (name || 'Project Board');
+}
+
+function startEditName(){
+  const wrap = document.getElementById('board-name-wrap');
+  const display = document.getElementById('board-name-display');
+  const input = document.getElementById('board-name-input');
+  display.style.display = 'none';
+  input.style.display = 'inline-block';
+  input.value = boardName || '';
+  input.placeholder = 'Name your board…';
+  wrap.classList.add('editing');
+  input.focus();
+  input.select();
+}
+
+function saveName(){
+  const wrap = document.getElementById('board-name-wrap');
+  const display = document.getElementById('board-name-display');
+  const input = document.getElementById('board-name-input');
+  boardName = input.value.trim();
+  localStorage.setItem('pb4_boardname', boardName);
+  input.style.display = 'none';
+  display.style.display = 'inline';
+  wrap.classList.remove('editing');
+  renderBoardName();
+}
+
+function cancelEditName(){
+  const wrap = document.getElementById('board-name-wrap');
+  const display = document.getElementById('board-name-display');
+  const input = document.getElementById('board-name-input');
+  input.style.display = 'none';
+  display.style.display = 'inline';
+  wrap.classList.remove('editing');
+}
+
 // ── RENDER ALL + INIT ─────────────────────────────────────────────────────
 function renderAll(){
   renderKanban();
@@ -948,7 +1008,8 @@ function renderAll(){
 }
 
 updProjFilter();
-switchView('kanban'); // sets active state on load
+renderBoardName();
+switchView('kanban');
 </script>
 </body>
 </html>
